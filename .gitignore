@@ -1,3 +1,4 @@
 *.wav
 _pycache_/
 .idea/
+log/

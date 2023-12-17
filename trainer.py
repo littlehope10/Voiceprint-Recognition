@@ -22,6 +22,14 @@ from datetime import timedelta
 
 logger = setup_logger(__name__)
 
+
+"""     
+    设置dataloader的返回组
+    并且将一组音频组合为batch*48000的tensor
+    将label转化为batch长度的int类型
+    延长音频并进行预处理
+"""
+
 def collate_fn(batch):
     # 找出音频长度最长的
     batch = sorted(batch, key=lambda audio: audio[0].samples.shape, reverse=True)
@@ -83,13 +91,8 @@ class SoundTrainer:
                                           normalization=self.config.dataset_conf.normalization,
                                           target_dB=self.config.dataset_conf.target_dB)
 
-        #多卡训练
-        # train_sample = None
-        # if torch.cuda.device_count() > 1:
-        #     train_sample = DistributedSampler(dataset=self.train_data)
-
         self.train_loader = DataLoader(dataset=self.train_data,
-                                       shuffle=False,
+                                       shuffle=True,
                                        batch_size=self.config.dataset_conf.batch_size,
                                        collate_fn=collate_fn,
                                        num_workers=self.config.dataset_conf.num_workers,
@@ -159,8 +162,6 @@ class SoundTrainer:
                                                  weight_decay=float(self.config.optimizer_conf.weight_decay))
             else:
                 raise Exception(f'不支持优化方法：{optimizer}')
-            # 学习率衰减函数
-            # self.scheduler = CosineAnnealingLR(self.optimizer, T_max=int(self.config.train_conf.max_epoch * 1.2))
 
     def __save_model(self, save_model_path, epoch_id, best_eer=0., best_model=False):
         state_dict = self.model.state_dict()
@@ -177,6 +178,11 @@ class SoundTrainer:
         torch.save(state_dict, os.path.join(model_path, 'model.pt'))
         logger.info('已保存模型：{}'.format(model_path))
 
+    """
+            每一轮次的训练方法
+            每一次训练长度为batch的音频数据
+            记录训练时间，准确率及损失
+    """
     def __train_epoch(self, epoch_id, save_path, writer):
         train_times, accs, loss = [], [], []
         start = time.time()
@@ -185,10 +191,18 @@ class SoundTrainer:
         for batch_id, (audio, label, length) in enumerate(self.train_loader):
             # print(batch_id)
             # print(f"audio = {audio}\nlabel = {label}\nlength = {length}")
+
+            # """
+            #         将数据送至显卡
+            # """
+
             audio = audio.to(self.device)
             label = label.to(self.device).long()
             length = length.to(self.device)
 
+            # """
+            #         将音频进行一轮优化后送入模型进行训练
+            # """
             features = self.audio_featurizer(audio, length)
             output = self.model(features[0])
 
@@ -215,7 +229,8 @@ class SoundTrainer:
                 eta_sec = (sum(train_times) / len(train_times)) * (
                         sum_batch - (epoch_id - 1) * len(self.train_loader) - batch_id)
                 eta_str = str(timedelta(seconds=int(eta_sec / 1000)))
-                logger.info(f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
+                logger.info(f'\n==========================================================='
+                            f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
                             f'准确率: {sum(accs) / len(accs):.5f}, \n'
@@ -223,8 +238,7 @@ class SoundTrainer:
                             f'速度: {train_speed:.2f} data/sec, eta: {eta_str}')
                 writer.add_scalar('Train/Loss', sum(loss) / len(loss), self.train_step)
                 writer.add_scalar('Train/Accuracy', (sum(accs) / len(accs)), self.train_step)
-                # 记录学习率
-                # writer.add_scalar('Train/lr', self.scheduler.get_last_lr()[0], self.train_step)
+
                 self.train_step += 1
                 train_times = []
 
