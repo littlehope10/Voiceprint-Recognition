@@ -20,7 +20,7 @@ def main(list_path = "dataset", voice_path = "dataset/voice"):
     test = open(os.path.join(list_path, "test_list.txt"), 'w')
     for i, data in enumerate(datas):
         sound_path, label = data
-        if i % 10 == 0:
+        if i % 20 == 0:
             test.write(f"{sound_path}\t{label}\n")
         else:
             train.write(f"{sound_path}\t{label}\n")

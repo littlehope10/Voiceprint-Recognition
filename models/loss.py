@@ -45,7 +45,7 @@ class AAMLoss(nn.Module):
         self.criterion = torch.nn.KLDivLoss(reduction="sum")
 
     def forward(self, outputs, targets):
-        targets = F.one_hot(targets, outputs.shape[0]).float()
+        targets = F.one_hot(targets, outputs.shape[1]).float()
         predictions = self.loss_fn(outputs, targets)
         predictions = F.log_softmax(predictions, dim=1)
         loss = self.criterion(predictions, targets) / targets.sum()

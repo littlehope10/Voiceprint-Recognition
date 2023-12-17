@@ -41,14 +41,13 @@ def collate_fn(batch):
         input_lens_ratio.append(seq_length/max_audio_length[0])
     input_lens_ratio = np.array(input_lens_ratio, dtype='float32')
     labels = np.array(labels, dtype='int64')
-    print(torch.tensor(labels))
     return torch.tensor(inputs), torch.tensor(labels), torch.tensor(input_lens_ratio)
 
 class SoundTrainer:
     def __init__(self, configs, use_gpu):
         if use_gpu:
             assert (torch.cuda.is_available()), 'GPU不可用'
-            self.device = torch.device("cpu")
+            self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
 
@@ -184,6 +183,7 @@ class SoundTrainer:
         sum_batch = len(self.train_loader) * self.config.train_conf.max_epoch
 
         for batch_id, (audio, label, length) in enumerate(self.train_loader):
+            # print(batch_id)
             # print(f"audio = {audio}\nlabel = {label}\nlength = {length}")
             audio = audio.to(self.device)
             label = label.to(self.device).long()
@@ -193,7 +193,7 @@ class SoundTrainer:
             output = self.model(features[0])
 
             # 计算损失值
-            los = self.loss(output, label)
+            los = self.loss(torch.sigmoid(output), label)
             self.optimizer.zero_grad()
             los.backward()
             self.optimizer.step()
@@ -215,10 +215,10 @@ class SoundTrainer:
                 eta_sec = (sum(train_times) / len(train_times)) * (
                         sum_batch - (epoch_id - 1) * len(self.train_loader) - batch_id)
                 eta_str = str(timedelta(seconds=int(eta_sec / 1000)))
-                logger.info(f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], '
-                            f'批次: [{batch_id}/{len(self.train_loader)}], '
-                            f'损失: {sum(loss) / len(loss):.5f}, '
-                            f'准确率: {sum(accs) / len(accs):.5f}, '
+                logger.info(f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
+                            f'批次: [{batch_id}/{len(self.train_loader)}], \n'
+                            f'损失: {sum(loss) / len(loss):.5f}, \n'
+                            f'准确率: {sum(accs) / len(accs):.5f}, \n'
                             # f'学习率: {self.scheduler.get_last_lr()[0]:>.8f}, '
                             f'速度: {train_speed:.2f} data/sec, eta: {eta_str}')
                 writer.add_scalar('Train/Loss', sum(loss) / len(loss), self.train_step)
@@ -229,8 +229,8 @@ class SoundTrainer:
                 train_times = []
 
             # 固定步数也要保存一次模型
-            if batch_id % 10000 == 0 and batch_id != 0:
-                self.__save_model(save_model_path=save_path, epoch_id=epoch_id)
+            # if batch_id % 2 == 0 and batch_id != 0:
+            #     self.__save_model(save_model_path=save_path, epoch_id=epoch_id)
             start = time.time()
 
 
