@@ -1,0 +1,17 @@
+dataset/voice/0001/kne110_009.wav	0001
+dataset/voice/0001/nen005_019.wav	0001
+dataset/voice/0001/nen005_079.wav	0001
+dataset/voice/0001/nen008_047_0.wav	0001
+dataset/voice/0001/nen010_018_1.wav	0001
+dataset/voice/0001/nen012_036_1.wav	0001
+dataset/voice/0001/nen015_070_0.wav	0001
+dataset/voice/0001/nen103_159.wav	0001
+dataset/voice/0001/nen103_205_1.wav	0001
+dataset/voice/0001/nen103_228_1.wav	0001
+dataset/voice/0001/nen104_044.wav	0001
+dataset/voice/0001/nen108_004.wav	0001
+dataset/voice/0001/nen112_161.wav	0001
+dataset/voice/0001/nen113_049_0.wav	0001
+dataset/voice/0001/nen114_101_0.wav	0001
+dataset/voice/0001/nen116_015.wav	0001
+dataset/voice/0001/nen210_043_0.wav	0001
