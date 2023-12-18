@@ -4,6 +4,7 @@ import yaml
 import numpy as np
 import os
 import platform
+import shutil
 
 from models.ecapa_tdnn import EcapaTdnn
 from models.fc import SpeakerIdetification
@@ -80,6 +81,10 @@ class SoundTrainer:
         if platform.system().lower() == 'windows':
             self.config.dataset_conf.num_workers = 0
             logger.warning('Windows系统不支持多线程读取数据，已自动关闭！')
+
+        self.save_model_paths = []
+        self.best_loss = 100.0
+        self.best_acc = 0.0
 
     def __dataload(self, istrain = False):
         #读取训练集
@@ -163,19 +168,26 @@ class SoundTrainer:
             else:
                 raise Exception(f'不支持优化方法：{optimizer}')
 
-    def __save_model(self, save_model_path, epoch_id, best_eer=0., best_model=False):
+    def __save_model(self, save_model_path, batch_id, epoch_id, best_model=False):
         state_dict = self.model.state_dict()
         if best_model:
             model_path = os.path.join(save_model_path,
                                       f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}',
-                                      'best_model')
+                                      'best_model').replace('\\', '/')
         else:
             model_path = os.path.join(save_model_path,
                                       f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}',
-                                      'epoch_{}'.format(epoch_id))
+                                      f'epoch_{epoch_id}_batch_{batch_id}').replace('\\', '/')
+            self.save_model_paths.append(model_path)
         os.makedirs(model_path, exist_ok=True)
-        torch.save(self.optimizer.state_dict(), os.path.join(model_path, 'optimizer.pt'))
-        torch.save(state_dict, os.path.join(model_path, 'model.pt'))
+
+        if len(self.save_model_paths) >= 10:
+            shutil.rmtree(self.save_model_paths[0])
+            del self.save_model_paths[0]
+
+
+        torch.save(self.optimizer.state_dict(), os.path.join(model_path, 'optimizer.pt').replace('\\', '/'))
+        torch.save(state_dict, os.path.join(model_path, 'model.pt').replace('\\', '/'))
         logger.info('已保存模型：{}'.format(model_path))
 
     """
@@ -229,7 +241,7 @@ class SoundTrainer:
                 eta_sec = (sum(train_times) / len(train_times)) * (
                         sum_batch - (epoch_id - 1) * len(self.train_loader) - batch_id)
                 eta_str = str(timedelta(seconds=int(eta_sec / 1000)))
-                logger.info(f'\n==========================================================='
+                logger.info(f'\n===========================================================\n'
                             f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
@@ -243,8 +255,13 @@ class SoundTrainer:
                 train_times = []
 
             # 固定步数也要保存一次模型
-            # if batch_id % 2 == 0 and batch_id != 0:
-            #     self.__save_model(save_model_path=save_path, epoch_id=epoch_id)
+            if batch_id % 12 == 0 and batch_id != 0:
+                if sum(loss) / len(loss) < self.best_loss and sum(accs) / len(accs) > self.best_acc:
+                    self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id, best_model=True)
+                    self.best_loss = sum(loss) / len(loss)
+                    self.best_acc = sum(accs) / len(accs)
+                else:
+                    self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
             start = time.time()
 
 

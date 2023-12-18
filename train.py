@@ -13,7 +13,7 @@ if __name__ == "__main__":
     add_arg("local_rank",       int,    0,                             '多卡训练需要的参数')
     add_arg("use_gpu",          bool,   True,                          '是否使用GPU训练')
     #add_arg('augment_conf_path',str,    'configs/augmentation.json',   '数据增强的配置文件，为json格式')
-    add_arg('save_model_path',  str,    'models/',                  '模型保存的路径')
+    add_arg('save_model_path',  str,    'train_model/',                  '模型保存的路径')
     add_arg('resume_model',     str,    None,                       '恢复训练，当为None则不使用预训练模型')
     add_arg('pretrained_model', str,    None,                       '预训练模型的路径，当为None则不使用预训练模型')
     args = parser.parse_args()
