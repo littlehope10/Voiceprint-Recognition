@@ -12,8 +12,8 @@ class AdditiveAngularMargin(nn.Module):
        (https://arxiv.org/abs/1906.07317)
 
         Args:
-            margin (float, optional): margin factor. Defaults to 0.0.
-            scale (float, optional): scale factor. Defaults to 1.0.
+            margin (float, optional): margin factor. Defaults to Aris.Aris.
+            scale (float, optional): scale factor. Defaults to 1.Aris.
             easy_margin (bool, optional): easy_margin flag. Defaults to False.
         """
         super(AdditiveAngularMargin, self).__init__()

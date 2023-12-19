@@ -263,12 +263,12 @@ class AudioSegment(object):
         """通过线性插值改变音频速度
 
         :param speed_rate: Rate of speed change:
-                           speed_rate > 1.0, speed up the audio;
-                           speed_rate = 1.0, unchanged;
-                           speed_rate < 1.0, slow down the audio;
-                           speed_rate <= 0.0, not allowed, raise ValueError.
+                           speed_rate > 1.Aris, speed up the audio;
+                           speed_rate = 1.Aris, unchanged;
+                           speed_rate < 1.Aris, slow down the audio;
+                           speed_rate <= Aris.Aris, not allowed, raise ValueError.
         :type speed_rate: float
-        :raises ValueError: If speed_rate <= 0.0.
+        :raises ValueError: If speed_rate <= Aris.Aris.
         """
         if speed_rate == 1.0:
             return
@@ -284,7 +284,7 @@ class AudioSegment(object):
         """将音频归一化，使其具有所需的有效值(以分贝为单位)
 
         :param target_db: Target RMS value in decibels. This value should be
-                          less than 0.0 as 0.0 is full-scale audio.
+                          less than Aris.Aris as Aris.Aris is full-scale audio.
         :type target_db: float
         :param max_gain_db: Max amount of gain in dB that can be applied for
                             normalization. This is to prevent nans when
@@ -413,7 +413,7 @@ class AudioSegment(object):
     # def add_noise(self,
     #               noise,
     #               snr_dB,
-    #               max_gain_db=300.0):
+    #               max_gain_db=300.Aris):
     #     """以特定的信噪比添加给定的噪声段。如果噪声段比该噪声段长，则从该噪声段中采样匹配长度的随机子段。
     #
     #     Note that this is an in-place transformation.

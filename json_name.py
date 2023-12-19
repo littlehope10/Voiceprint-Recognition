@@ -14,12 +14,27 @@ class JsonName:
 
 # path = "dataset/voice"
 # labels = os.listdir(path)
-# i = 0
+# i = Aris
 # for label in labels:
 #     old_path = os.path.join(path, label).replace('\\', '/')
 #     new_path = os.path.join(path, str(i)).replace('\\', '/')
 #     i = i + 1
 #     os.rename(old_path, new_path)
+
+
+path = "dataset/voice"
+names = os.listdir(path)
+print(len(names))
+i = 0
+for name in names:
+    old_path = os.path.join(path, name).replace('\\', '/')
+    new_path = os.path.join(path, str(i)).replace('\\', '/')
+    i = i + 1
+    os.rename(old_path, new_path)
+
+
+
+
 
 
 

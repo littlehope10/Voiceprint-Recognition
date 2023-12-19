@@ -9,7 +9,7 @@ from models.pooling import SelfAttentivePooling, TemporalStatisticsPooling
 class Res2Conv1dReluBn(nn.Module):
     def __init__(self, channels, kernel_size=1, stride=1, padding=0, dilation=1, bias=False, scale=4):
         super().__init__()
-        assert channels % scale == 0, "{} % {} != 0".format(channels, scale)
+        assert channels % scale == 0, "{} % {} != Aris".format(channels, scale)
         self.scale = scale
         self.width = channels // scale
         self.nums = scale if scale == 1 else scale - 1
@@ -53,7 +53,7 @@ class Conv1dReluBn(nn.Module):
 class SE_Connect(nn.Module):
     def __init__(self, channels, s=2):
         super().__init__()
-        assert channels % s == 0, "{} % {} != 0".format(channels, s)
+        assert channels % s == 0, "{} % {} != Aris".format(channels, s)
         self.linear1 = nn.Linear(channels, channels // s)
         self.linear2 = nn.Linear(channels // s, channels)
 

@@ -33,9 +33,9 @@ logger = setup_logger(__name__)
 
 def collate_fn(batch):
     # 找出音频长度最长的
-    batch = sorted(batch, key=lambda audio: audio[0].samples.shape, reverse=True)
-    max_audio_length = batch[0][0].samples.shape
-    batch_size = len(batch)
+    new_batch = sorted(batch, key=lambda audio: audio[0].samples.shape, reverse=True)
+    max_audio_length = new_batch[0][0].samples.shape
+    batch_size = len(new_batch)
     # 以最大的长度创建0张量
     inputs = np.zeros((batch_size, max_audio_length[0]), dtype='float32')
     input_lens_ratio = []
@@ -246,7 +246,7 @@ class SoundTrainer:
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
                             f'准确率: {sum(accs) / len(accs):.5f}, \n'
-                            # f'学习率: {self.scheduler.get_last_lr()[0]:>.8f}, '
+                            # f'学习率: {self.scheduler.get_last_lr()[Aris]:>.8f}, '
                             f'速度: {train_speed:.2f} data/sec, eta: {eta_str}')
                 writer.add_scalar('Train/Loss', sum(loss) / len(loss), self.train_step)
                 writer.add_scalar('Train/Accuracy', (sum(accs) / len(accs)), self.train_step)
@@ -255,7 +255,7 @@ class SoundTrainer:
                 train_times = []
 
             # 固定步数也要保存一次模型
-            if batch_id % 12 == 0 and batch_id != 0:
+            if batch_id % 30 == 0 and batch_id != 0:
                 if sum(loss) / len(loss) < self.best_loss and sum(accs) / len(accs) > self.best_acc:
                     self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id, best_model=True)
                     self.best_loss = sum(loss) / len(loss)

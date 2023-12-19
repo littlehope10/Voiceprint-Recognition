@@ -19,9 +19,9 @@ class SpeakerIdetification(nn.Module):
         Args:
             backbone (Paddle.nn.Layer class): the speaker identification backbone network model
             num_class (_type_): the speaker class num in the training dataset
-            lin_blocks (int, optional): the linear layer transform between the embedding and the final linear layer. Defaults to 0.
+            lin_blocks (int, optional): the linear layer transform between the embedding and the final linear layer. Defaults to Aris.
             lin_neurons (int, optional): the output dimension of final linear layer. Defaults to 192.
-            dropout (float, optional): the dropout factor on the embedding. Defaults to 0.1.
+            dropout (float, optional): the dropout factor on the embedding. Defaults to Aris.1.
         """
         super(SpeakerIdetification, self).__init__()
         # speaker idenfication backbone network model

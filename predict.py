@@ -1,7 +1,7 @@
 import torch
 import yaml
 import os
-import json
+import pickle
 import numpy as np
 
 from tqdm import tqdm
@@ -19,10 +19,9 @@ from torch.nn.functional import cosine_similarity, softmax
 
 class SoundPredict:
     def __init__(self, configs, threshold, audio_db_path, sound_index_path, model_path, use_gpu):
-        # 音频库的特征
-        self.feature = None
-        # 音频库的label
+        self.name_dict = {}
         self.names = []
+        self.feature = None
         # 已经位于index.bin中的音频路径
         self.have_loaded_sound_path = []
         # 音频库路径
@@ -55,11 +54,13 @@ class SoundPredict:
         self.featurizer.to(self.device)
 
         for name in os.listdir(self.audio_db_path):
-            if name == "index.bin": continue
+            self.names.append(name)
             name_path = os.path.join(self.audio_db_path, name).replace('\\', '/')
             for sound in os.listdir(name_path):
                 sound_path = os.path.join(name_path, sound).replace('\\', '/')
                 self.all_sound_path.append(sound_path)
+
+        self.__create_index()
 
         # 获取模型
         if self.config.use_model == 'EcapaTdnn' or self.config.use_model == 'ecapa_tdnn':
@@ -88,25 +89,16 @@ class SoundPredict:
         model.eval()
         self.predictor = model
 
-        if self.sound_index_path is not None:
-            self.__load_sound()
+        self.__load_sound()
 
 
+    def __create_index(self):
+        assert len(self.names) > 0, "音频库无数据"
+        i = 0
+        for name in self.names:
+            self.name_dict[i] = name
+            i = i + 1
 
-
-    def __write_sound_index(self):
-        with open(self.sound_index_path, 'wb') as f:
-            pickle.dump({"name": self.names,
-                         "feature": self.feature,
-                         "path": self.have_loaded_sound_path}, f)
-
-    def __load_sound_index(self):
-        if not os.path.exists(self.sound_index_path): return
-        with open(self.sound_index_path, 'rb') as f:
-            datas = pickle.load(f)
-        self.names = datas["name"]
-        self.feature = datas["feature"]
-        self.have_loaded_sound_path = datas["path"]
 
     def __load_sound(self):
         """
@@ -114,12 +106,8 @@ class SoundPredict:
         Returns: None
 
         """
-        self.__load_sound_index()
-
-        new_sounds = []
+        sounds = []
         for sound_path in tqdm(self.all_sound_path):
-            if sound_path in self.have_loaded_sound_path: continue
-            self.have_loaded_sound_path.append(sound_path)
             sound_segment = AudioSegment.from_file(sound_path)
             assert sound_segment.duration > self.config.dataset_conf.min_length, f"{sound_path}的音频过短"
 
@@ -133,28 +121,22 @@ class SoundPredict:
                 sound_segment.normalize(self.config.dataset_conf.target_dB)
 
             sound = sound_segment.samples
-            new_sounds.append(sound)
+            sounds.append(sound)
 
-            name = sound_path.split('/', maxsplit=2)[1]
-            self.names.append(name)
-
-            if len(new_sounds) == self.config.dataset_conf.batch_size:
-                features = self.__predict_batch(new_sounds)
+            if len(sounds) == self.config.dataset_conf.num_speakers:
                 if self.feature is None:
-                    self.feature = features
+                    self.feature = self.__predict_batch(sounds)
                 else:
-                    self.feature = np.vstack((self.feature, features))
-                new_sounds = []
+                    new_sounds = self.__predict_batch(sounds)
+                    self.feature = np.vstack((self.feature, new_sounds))
+                sounds = []
 
-
-        if len(new_sounds) != 0:
-            features = self.__predict_batch(new_sounds)
+        if len(sounds) != 0:
             if self.feature is None:
-                self.feature = features
+                self.feature = self.__predict_batch(sounds)
             else:
-                self.feature = np.vstack((self.feature, features))
-
-        self.__write_sound_index()
+                new_sounds = self.__predict_batch(sounds)
+                self.feature = np.vstack((self.feature, new_sounds))
 
 
     def __predict_one(self, pred_sound):
@@ -245,10 +227,12 @@ class SoundPredict:
         return labels
 
     def __pt_retrieval(self, np_feature):
-        np_feature = np_feature[0:len(self.all_sound_path)]
-        np_feature = np_feature.data.cpu().numpy()
+        np_feature = np_feature[0].data.cpu()
+        feature = torch.tensor(self.feature[1])
+        similarity = cosine_similarity(np_feature, feature, dim=0)
         index = np.argmax(np_feature)
-        return index
+        acc = np_feature[0][index]
+        return self.name_dict[index], acc
 
 
 
@@ -262,7 +246,6 @@ class SoundPredict:
         if threshold:
             self.threshold = threshold
         feature = self.__predict_one(audio_data)
-        label = self.__pt_retrieval(np_feature=feature)
-        print(label)
-
+        name, acc = self.__pt_retrieval(np_feature=feature)
+        return name, acc
 
