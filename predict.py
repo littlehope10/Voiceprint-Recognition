@@ -1,7 +1,7 @@
 import torch
 import yaml
 import os
-import pickle
+import json
 import numpy as np
 
 from tqdm import tqdm
@@ -14,16 +14,32 @@ from models.res2net import Res2Net
 from models.resnet_se import ResNetSE
 from models.tdnn import TDNN
 from models.fc import SpeakerIdetification
-from sklearn.metrics.pairwise import cosine_similarity
+#from sklearn.metrics.pairwise import cosine_similarity
+from torch.nn.functional import cosine_similarity, softmax
 
 class SoundPredict:
     def __init__(self, configs, threshold, audio_db_path, sound_index_path, model_path, use_gpu):
+        # 音频库的特征
+        self.feature = None
+        # 音频库的label
+        self.names = []
+        # 已经位于index.bin中的音频路径
+        self.have_loaded_sound_path = []
+        # 音频库路径
+        self.audio_db_path = audio_db_path
+        # index.bin索引路径
+        self.sound_index_path = sound_index_path
+
+        self.cdd_num = 5
+
+        # 加载gpu
         if use_gpu:
             assert torch.cuda.is_available(), f"GPU不可用"
             self.device = torch.device("cuda")
         else:
             self.device = torch.device("cpu")
 
+        # 加载config配置
         if isinstance(configs, str):
             with open(configs, 'r', encoding='utf-8') as f:
                 config = yaml.load(f.read(), Loader=yaml.FullLoader)
@@ -31,8 +47,19 @@ class SoundPredict:
 
         self.config = dict_to_object(config)
 
+        # 获取所有的音频数据集
+        self.all_sound_path = []
+
+        # 加载特征器
         self.featurizer = AudioFeaturizer(feature_conf=self.config.feature_conf, **self.config.preprocess_conf)
         self.featurizer.to(self.device)
+
+        for name in os.listdir(self.audio_db_path):
+            if name == "index.bin": continue
+            name_path = os.path.join(self.audio_db_path, name).replace('\\', '/')
+            for sound in os.listdir(name_path):
+                sound_path = os.path.join(name_path, sound).replace('\\', '/')
+                self.all_sound_path.append(sound_path)
 
         # 获取模型
         if self.config.use_model == 'EcapaTdnn' or self.config.use_model == 'ecapa_tdnn':
@@ -47,6 +74,7 @@ class SoundPredict:
             raise Exception(f'{self.config.use_model} 模型不存在！')
         model = SpeakerIdetification(backbone=backbone, num_class=self.config.dataset_conf.num_speakers)
         model.to(self.device)
+
         # 加载模型
         if os.path.isdir(model_path):
             model_path = os.path.join(model_path, 'model.pt')
@@ -60,23 +88,17 @@ class SoundPredict:
         model.eval()
         self.predictor = model
 
-        self.feature = None
-        self.names = []
-        self.sound_path = []
-        self.audio_db_path = audio_db_path
-        self.sound_index_path = sound_index_path
-
         if self.sound_index_path is not None:
             self.__load_sound()
 
-        self.cdd_num = 5
+
 
 
     def __write_sound_index(self):
         with open(self.sound_index_path, 'wb') as f:
             pickle.dump({"name": self.names,
                          "feature": self.feature,
-                         "path": self.sound_path}, f)
+                         "path": self.have_loaded_sound_path}, f)
 
     def __load_sound_index(self):
         if not os.path.exists(self.sound_index_path): return
@@ -84,24 +106,20 @@ class SoundPredict:
             datas = pickle.load(f)
         self.names = datas["name"]
         self.feature = datas["feature"]
-        self.sound_path = datas["path"]
+        self.have_loaded_sound_path = datas["path"]
 
     def __load_sound(self):
+        """
+        加载声音库中的声音到模型中，形成一个输出结果为length的模型
+        Returns: None
+
+        """
         self.__load_sound_index()
 
-        new_sound_paths = []
-
-        for name in os.listdir(self.audio_db_path):
-            if name == "index.bin": continue
-            name_path = os.path.join(self.audio_db_path, name).replace('\\', '/')
-            for sound in os.listdir(name_path):
-                sound_path = os.path.join(name_path, sound).replace('\\', '/')
-                new_sound_paths.append(sound_path)
-
         new_sounds = []
-        for sound_path in tqdm(new_sound_paths):
-            if sound_path in self.sound_path: continue
-            self.sound_path.append(sound_path)
+        for sound_path in tqdm(self.all_sound_path):
+            if sound_path in self.have_loaded_sound_path: continue
+            self.have_loaded_sound_path.append(sound_path)
             sound_segment = AudioSegment.from_file(sound_path)
             assert sound_segment.duration > self.config.dataset_conf.min_length, f"{sound_path}的音频过短"
 
@@ -140,6 +158,15 @@ class SoundPredict:
 
 
     def __predict_one(self, pred_sound):
+        """
+        只预测一个数据
+        Args:
+            pred_sound: 要预测的数据
+
+        Returns:
+            tensor: (1, length)
+
+        """
         sound_segment = AudioSegment.from_file(pred_sound)
         assert sound_segment.duration > self.config.dataset_conf.min_length, f"{pred_sound}的音频过短"
 
@@ -160,13 +187,13 @@ class SoundPredict:
         label = torch.tensor([1], dtype=torch.float32,device=self.device)
 
         feature = self.featurizer(sound, label)
-        feature = self.predictor(feature[0]).data.cpu().numpy()
+        feature = self.predictor(feature[0])
         return feature
 
     def __predict_batch(self, new_sounds):
 
         """
-
+        预测一组数据
         Args:
             new_sounds: list: tensor(48000,)
 
@@ -195,7 +222,7 @@ class SoundPredict:
         features = self.predictor(audio_feature).data.cpu().numpy()
         return features
 
-    def __retrieval(self, np_feature):
+    def __sk_retrieval(self, np_feature):
         labels = []
         for feature in self.feature:
             similarity = cosine_similarity(np_feature.reshape(-1, 1), feature.reshape(-1, 1))
@@ -217,6 +244,14 @@ class SoundPredict:
             labels.append(max_label)
         return labels
 
+    def __pt_retrieval(self, np_feature):
+        np_feature = np_feature[0:len(self.all_sound_path)]
+        np_feature = np_feature.data.cpu().numpy()
+        index = np.argmax(np_feature)
+        return index
+
+
+
     def recognition(self, audio_data, threshold=None, sample_rate=16000):
         """声纹识别
         :param audio_data: 需要识别的数据，支持文件路径，文件对象，字节，numpy。如果是字节的话，必须是完整的字节文件
@@ -227,7 +262,7 @@ class SoundPredict:
         if threshold:
             self.threshold = threshold
         feature = self.__predict_one(audio_data)
-        label = self.__retrieval(np_feature=feature[0])[0]
+        label = self.__pt_retrieval(np_feature=feature)
         print(label)
 
 

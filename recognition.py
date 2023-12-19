@@ -24,6 +24,6 @@ predictor = predict.SoundPredict(configs=args.configs,
                                  sound_index_path=args.sound_index_path,
                                  model_path=args.model_path,
                                  use_gpu=args.use_gpu)
-predictor.recognition("C:\\Users\\86183\\Desktop\\BuleArchiveSound\\MediaPatch\\Audio\\VOC_JP\\JP_Aris\\Aris_Growup_4.wav",
+predictor.recognition("C:\\Users\\86183\\Desktop\\BuleArchiveSound\\MediaPatch\\Audio\\VOC_JP\\JP_Aris\\Aris_ExSkill_2.wav",
                       threshold=args.threshold)
 
