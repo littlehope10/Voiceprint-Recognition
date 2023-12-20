@@ -14,8 +14,8 @@ from models.res2net import Res2Net
 from models.resnet_se import ResNetSE
 from models.tdnn import TDNN
 from models.fc import SpeakerIdetification
-#from sklearn.metrics.pairwise import cosine_similarity
-from torch.nn.functional import cosine_similarity, softmax
+from sklearn.metrics.pairwise import cosine_similarity
+# from torch.nn.functional import cosine_similarity, softmax
 
 class SoundPredict:
     def __init__(self, configs, threshold, audio_db_path, sound_index_path, model_path, use_gpu):
@@ -87,7 +87,7 @@ class SoundPredict:
         model.load_state_dict(model_state_dict)
         print(f"成功加载模型参数：{model_path}")
         model.eval()
-        self.predictor = model
+        self.predictor = model.backbone
 
         self.__load_sound()
 
@@ -96,8 +96,11 @@ class SoundPredict:
         assert len(self.names) > 0, "音频库无数据"
         i = 0
         for name in self.names:
-            self.name_dict[i] = name
-            i = i + 1
+            name_path = os.path.join(self.audio_db_path, name).replace('\\', '/')
+            sounds = os.listdir(name_path)
+            for j in range(len(sounds)):
+                self.name_dict[i] = name
+                i = i + 1
 
 
     def __load_sound(self):
@@ -123,20 +126,14 @@ class SoundPredict:
             sound = sound_segment.samples
             sounds.append(sound)
 
-            if len(sounds) == self.config.dataset_conf.num_speakers:
-                if self.feature is None:
-                    self.feature = self.__predict_batch(sounds)
-                else:
-                    new_sounds = self.__predict_batch(sounds)
-                    self.feature = np.vstack((self.feature, new_sounds))
-                sounds = []
+            # if len(sounds) == self.config.dataset_conf.num_speakers:
+            #     feature = self.__predict_batch(sounds)
+            #     self.feature = np.concatenate((self.feature, feature)) if self.feature is not None else feature
+            #     sounds = []
 
         if len(sounds) != 0:
-            if self.feature is None:
-                self.feature = self.__predict_batch(sounds)
-            else:
-                new_sounds = self.__predict_batch(sounds)
-                self.feature = np.vstack((self.feature, new_sounds))
+            feature = self.__predict_batch(sounds)
+            self.feature = np.concatenate((self.feature, feature)) if self.feature is not None else feature
 
 
     def __predict_one(self, pred_sound):
@@ -163,14 +160,15 @@ class SoundPredict:
 
 
         sound = sound_segment.samples
+        length = sound.shape[0] / self.config.dataset_conf.max_length
         input = np.zeros((1, sound.shape[0]), dtype='float32')
         input[0, :sound.shape[0]] = sound[:]
         sound = torch.tensor(data=input, dtype=torch.float32, device=self.device)
-        label = torch.tensor([1], dtype=torch.float32,device=self.device)
+        label = torch.tensor([length], dtype=torch.float32,device=self.device)
 
         feature = self.featurizer(sound, label)
         feature = self.predictor(feature[0])
-        return feature
+        return feature.data.cpu().numpy()[0]
 
     def __predict_batch(self, new_sounds):
 
@@ -206,6 +204,7 @@ class SoundPredict:
 
     def __sk_retrieval(self, np_feature):
         labels = []
+        similarity = cosine_similarity(np_feature.reshape(1, -1), self.feature.reshape(len(self.feature), -1))
         for feature in self.feature:
             similarity = cosine_similarity(np_feature.reshape(-1, 1), feature.reshape(-1, 1))
             abs_similarity = np.abs(similarity)
@@ -227,12 +226,21 @@ class SoundPredict:
         return labels
 
     def __pt_retrieval(self, np_feature):
-        np_feature = np_feature[0].data.cpu()
-        feature = torch.tensor(self.feature[1])
-        similarity = cosine_similarity(np_feature, feature, dim=0)
-        index = np.argmax(np_feature)
-        acc = np_feature[0][index]
-        return self.name_dict[index], acc
+        results = []
+        np_feature = torch.tensor(np_feature).data.cpu()
+        new_np_feature = np_feature.data.cpu().numpy()
+        for i, feature in enumerate(self.feature):
+            feature = torch.tensor(feature)
+            new_feature = feature.data.cpu().numpy()
+            similarity = cosine_similarity(np_feature, feature, dim = -1)
+            print(feature)
+            # np_feature = np_feature.reshape(1, -1)
+            # feature = feature.reshape(1, -1)
+
+            # if similarity[0][0] > self.threshold:
+            #     results.append((i, similarity[0][0]))
+
+        return results
 
 
 
@@ -246,6 +254,6 @@ class SoundPredict:
         if threshold:
             self.threshold = threshold
         feature = self.__predict_one(audio_data)
-        name, acc = self.__pt_retrieval(np_feature=feature)
+        name, acc = self.__sk_retrieval(np_feature=feature)
         return name, acc
 

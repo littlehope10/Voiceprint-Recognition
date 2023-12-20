@@ -24,7 +24,7 @@ predictor = predict.SoundPredict(configs=args.configs,
                                  sound_index_path=args.sound_index_path,
                                  model_path=args.model_path,
                                  use_gpu=args.use_gpu)
-name, acc = predictor.recognition("C:\\Users\\86183\\Desktop\\BuleArchiveSound\\MediaPatch\\Audio\\VOC_JP\\JP_Arona\\Arona_Work_Talk_1.wav",
+name, acc = predictor.recognition("C:\\Users\\86183\\Desktop\\zhvoice\\zhmagicdata\\5_541\\5_541_20170607160727.mp3",
                       threshold=args.threshold)
 print(f"预测说话人:{name},准确率:{acc}")
 

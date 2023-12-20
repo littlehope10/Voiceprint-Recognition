@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 
+from tqdm import tqdm
 from models.ecapa_tdnn import EcapaTdnn
 from models.fc import SpeakerIdetification
 from models.loss import AAMLoss, ARMLoss, CELoss, AMLoss
@@ -19,6 +20,7 @@ from utils.logger import setup_logger
 from data_utils.featurizer import AudioFeaturizer
 from models.res2net import Res2Net
 from datetime import timedelta
+from models.metrics import TprAtFpr
 
 
 logger = setup_logger(__name__)
@@ -85,6 +87,17 @@ class SoundTrainer:
         self.save_model_paths = []
         self.best_loss = 100.0
         self.best_acc = 0.0
+
+        self.best_model_path = os.path.join("train_model",
+                                       f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}',
+                                       'best_model').replace('\\', '/')
+        self.model_path = os.path.join("train_model",
+                                  f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}').replace('\\', '/')
+        if os.path.exists(self.model_path):
+            paths = os.listdir(self.model_path)
+            for path in paths:
+                if path != "best_model":
+                    self.save_model_paths.append(os.path.join(self.model_path, path).replace('\\', '/'))
 
     def __dataload(self, istrain = False):
         #读取训练集
@@ -170,18 +183,17 @@ class SoundTrainer:
 
     def __save_model(self, save_model_path, batch_id, epoch_id, best_model=False):
         state_dict = self.model.state_dict()
+
         if best_model:
-            model_path = os.path.join(save_model_path,
-                                      f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}',
-                                      'best_model').replace('\\', '/')
+            model_path = self.best_model_path
         else:
-            model_path = os.path.join(save_model_path,
-                                      f'{self.config.use_model}_{self.config.preprocess_conf.feature_method}',
-                                      f'epoch_{epoch_id}_batch_{batch_id}').replace('\\', '/')
-            self.save_model_paths.append(model_path)
+            model_path = os.path.join(self.model_path, f'epoch_{epoch_id}_batch_{batch_id}').replace('\\', '/')
+            if model_path not in self.save_model_paths:
+                self.save_model_paths.append(model_path)
+
         os.makedirs(model_path, exist_ok=True)
 
-        if len(self.save_model_paths) >= 10:
+        if len(self.save_model_paths) >= 6:
             shutil.rmtree(self.save_model_paths[0])
             del self.save_model_paths[0]
 
@@ -241,27 +253,19 @@ class SoundTrainer:
                 eta_sec = (sum(train_times) / len(train_times)) * (
                         sum_batch - (epoch_id - 1) * len(self.train_loader) - batch_id)
                 eta_str = str(timedelta(seconds=int(eta_sec / 1000)))
-                logger.info(f'\n===========================================================\n'
-                            f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
+                logger.info('='*70)
+                logger.info(f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
                             f'准确率: {sum(accs) / len(accs):.5f}, \n'
-                            # f'学习率: {self.scheduler.get_last_lr()[Aris]:>.8f}, '
                             f'速度: {train_speed:.2f} data/sec, eta: {eta_str}')
-                writer.add_scalar('Train/Loss', sum(loss) / len(loss), self.train_step)
-                writer.add_scalar('Train/Accuracy', (sum(accs) / len(accs)), self.train_step)
+                logger.info('='*70)
 
-                self.train_step += 1
                 train_times = []
 
             # 固定步数也要保存一次模型
             if batch_id % 30 == 0 and batch_id != 0:
-                if sum(loss) / len(loss) < self.best_loss and sum(accs) / len(accs) > self.best_acc:
-                    self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id, best_model=True)
-                    self.best_loss = sum(loss) / len(loss)
-                    self.best_acc = sum(accs) / len(accs)
-                else:
-                    self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
+                self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
             start = time.time()
 
 
@@ -276,10 +280,80 @@ class SoundTrainer:
         self.__modelload(input_size=self.audio_featurizer.feature_dim, is_train=True)
         logger.info(f"共有{len(self.train_data)}个训练集数据")
 
-        test_step, self.train_step = 0, 0
+        best_eer = 1
 
         for epoch in range(0, self.config.train_conf.max_epoch):
             self.__train_epoch(epoch, save_model_path, writer)
+            if epoch % 3 == 0 and epoch != 0:
+                start_time = time.time()
+                tpr, fpr, threshold, eer = self.__evaluate()
+                logger.info('=' * 70)
+                logger.info(f'测试轮: {epoch}\n'
+                            f'测试时间: {str(timedelta(seconds=(time.time() - start_time)))}\n'
+                            f'阈值: {threshold:.2f}\n'
+                            f'真阳性率: {tpr:.5f}\n'
+                            f'假阳性率: {fpr:.5f},\n'
+                            f'等错误率: {eer:.5f}')
+                logger.info('=' * 70)
+
+                if eer < best_eer:
+                    self.__save_model(save_model_path=save_model_path, batch_id=0, epoch_id=epoch, best_model=True)
+                    best_eer = eer
+                else:
+                    self.__save_model(save_model_path=save_model_path, batch_id=0, epoch_id=epoch)
+                self.model.train()
 
 
+
+    def __evaluate(self):
+        print("开始模型测试")
+        test_tprs, test_fprs, test_thresholds, test_eers = [], [], [], []
+        for resume_model in self.save_model_paths:
+            resume_model = os.path.join(resume_model, "model.pt").replace('\\', '/')
+            assert os.path.exists(resume_model), "模型不存在"
+            model_state_dict = torch.load(resume_model)
+            self.model.load_state_dict(model_state_dict)
+            eval_model = self.model
+
+            print(f"当前模型:{resume_model}")
+            print("开始加载测试集...")
+            self.model.eval()
+            features, labels = None, None
+            with torch.no_grad():
+                for batch_id, (audio, label, length) in enumerate(tqdm(self.test_loader)):
+                    audio = audio.to(self.device)
+                    length = length.to(self.device)
+                    label = label.to(self.device).long()
+                    audio_features, _ = self.audio_featurizer(audio, length)
+                    feature = eval_model.backbone(audio_features).data.cpu().numpy()
+                    label = label.data.cpu().numpy()
+                    # 存放特征
+                    features = np.concatenate((features, feature)) if features is not None else feature
+                    labels = np.concatenate((labels, label)) if labels is not None else label
+
+            self.model.train()
+            metric = TprAtFpr()
+            labels = labels.astype(np.int32)
+            print('开始两两对比音频特征...')
+            for i in tqdm(range(len(features))):
+                feature_1 = features[i]
+                feature_1 = np.expand_dims(feature_1, 0).repeat(len(features) - i, axis=0)
+                feature_2 = features[i:]
+                feature_1 = torch.tensor(feature_1, dtype=torch.float32)
+                feature_2 = torch.tensor(feature_2, dtype=torch.float32)
+                score = torch.nn.functional.cosine_similarity(feature_1, feature_2, dim=-1).data.cpu().numpy().tolist()
+                y_true = np.array(labels[i] == labels[i:]).astype(np.int32).tolist()
+                metric.add(y_true, score)
+            tprs, fprs, thresholds, eer, index = metric.calculate()
+            tpr, fpr, threshold = tprs[index], fprs[index], thresholds[index]
+            test_tprs.append(tpr)
+            test_fprs.append(fpr)
+            test_thresholds.append(threshold)
+            test_eers.append(eer)
+        index = test_eers.index(min(test_eers))
+        best_model = os.path.join(self.save_model_paths[index], "model.pt").replace('\\', '/')
+        optimizer = os.path.join(self.save_model_paths[index], "optimizer.pt").replace('\\', '/')
+        model_state_dict = torch.load(best_model)
+        self.model.load_state_dict(model_state_dict)
+        return test_tprs[index], test_fprs[index], test_thresholds[index], test_eers[index]
 
