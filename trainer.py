@@ -200,7 +200,7 @@ class SoundTrainer:
 
         torch.save(self.optimizer.state_dict(), os.path.join(model_path, 'optimizer.pt').replace('\\', '/'))
         torch.save(state_dict, os.path.join(model_path, 'model.pt').replace('\\', '/'))
-        logger.info('已保存模型：{}'.format(model_path))
+        logger.info(f'\n已保存模型：{model_path}')
 
     """
             每一轮次的训练方法
@@ -253,13 +253,13 @@ class SoundTrainer:
                 eta_sec = (sum(train_times) / len(train_times)) * (
                         sum_batch - (epoch_id - 1) * len(self.train_loader) - batch_id)
                 eta_str = str(timedelta(seconds=int(eta_sec / 1000)))
-                logger.info('='*70)
-                logger.info(f'训练轮数: [{epoch_id}/{self.config.train_conf.max_epoch}], \n'
+                logger.info('\n' + '='*50 +
+                            f'\n训练轮数: [{epoch_id + 1}/{self.config.train_conf.max_epoch}], \n'
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
                             f'准确率: {sum(accs) / len(accs):.5f}, \n'
-                            f'速度: {train_speed:.2f} data/sec, eta: {eta_str}')
-                logger.info('='*70)
+                            f'速度: {train_speed:.2f} data/sec, eta: {eta_str}\n' +
+                            '=' * 50)
 
                 train_times = []
 
@@ -284,17 +284,17 @@ class SoundTrainer:
 
         for epoch in range(0, self.config.train_conf.max_epoch):
             self.__train_epoch(epoch, save_model_path, writer)
-            if epoch % 3 == 0 and epoch != 0:
+            if epoch % 3 == 2 and epoch != 0:
                 start_time = time.time()
                 tpr, fpr, threshold, eer = self.__evaluate()
-                logger.info('=' * 70)
-                logger.info(f'测试轮: {epoch}\n'
+                logger.info('\n' + '=' * 70 +
+                            f'测试轮: {epoch + 3}\n'
                             f'测试时间: {str(timedelta(seconds=(time.time() - start_time)))}\n'
                             f'阈值: {threshold:.2f}\n'
                             f'真阳性率: {tpr:.5f}\n'
                             f'假阳性率: {fpr:.5f},\n'
-                            f'等错误率: {eer:.5f}')
-                logger.info('=' * 70)
+                            f'等错误率: {eer:.5f}\n' +
+                            '=' * 70)
 
                 if eer < best_eer:
                     self.__save_model(save_model_path=save_model_path, batch_id=0, epoch_id=epoch, best_model=True)
