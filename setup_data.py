@@ -1,10 +1,29 @@
 # 这是一个示例 Python 脚本。
 import os
-
+import json
 
 # 按 Shift+F10 执行或将其替换为您的代码。
 # 按 双击 Shift 在所有地方搜索类、文件、工具窗口、操作和设置。
+def keystoint(x):
+    return {int(k): v for k, v in x.items()}
+
+def load_json_name():
+    path = "configs/name.json"
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            datas = json.load(f, object_hook=keystoint)
+        return datas
+    return None
+
+def save_json_name(new_data):
+    path = "configs/name.json"
+    with open(path, 'w') as f:
+        json.dump(new_data, f)
+
+
 def rename():
+    json_data = load_json_name()
+    new_data = {}
     path = "dataset/voice"
     names = os.listdir(path)
     num_path = []
@@ -26,13 +45,19 @@ def rename():
             old_path = os.path.join(path, str(num)).replace('\\', '/')
             new_path = os.path.join(path, str(i)).replace('\\', '/')
             os.rename(old_path, new_path)
+        if json_data is not None and num in json_data.keys():
+            new_data[i] = str(json_data[num])
+        else:
+            new_data[i] = str(num)
         i = i + 1
 
     for else_p in else_path:
         old_path = os.path.join(path, else_p).replace('\\', '/')
         new_path = os.path.join(path, str(i)).replace('\\', '/')
         os.rename(old_path, new_path)
+        new_data[i] = else_p
         i = i + 1
+    save_json_name(new_data)
 
 def get_data_all(voice_path):
     datas = []

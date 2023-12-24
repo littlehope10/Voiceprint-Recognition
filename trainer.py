@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 from models.ecapa_tdnn import EcapaTdnn
 from models.fc import SpeakerIdetification
@@ -20,7 +21,7 @@ from utils.logger import setup_logger
 from data_utils.featurizer import AudioFeaturizer
 from models.res2net import Res2Net
 from datetime import timedelta
-from models.metrics import TprAtFpr
+from models.metrics import FRRAndFAR
 
 
 logger = setup_logger(__name__)
@@ -181,6 +182,9 @@ class SoundTrainer:
             else:
                 raise Exception(f'不支持优化方法：{optimizer}')
 
+        # 学习率衰减函数
+        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=int(self.config.train_conf.max_epoch * 1.2))
+
     def __save_model(self, save_model_path, batch_id, epoch_id, best_model=False):
         state_dict = self.model.state_dict()
 
@@ -258,6 +262,7 @@ class SoundTrainer:
                             f'批次: [{batch_id}/{len(self.train_loader)}], \n'
                             f'损失: {sum(loss) / len(loss):.5f}, \n'
                             f'准确率: {sum(accs) / len(accs):.5f}, \n'
+                            f'学习率: {self.scheduler.get_last_lr()[0]: >.8f}\n'
                             f'速度: {train_speed:.2f} data/sec, eta: {eta_str}\n' +
                             '=' * 50)
 
@@ -267,10 +272,11 @@ class SoundTrainer:
             if batch_id % 30 == 0 and batch_id != 0:
                 self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
             start = time.time()
+        self.scheduler.step()
 
 
 
-    def train(self, save_model_path = "train_model/"):
+    def train(self, save_model_path = "train_model/", save_image_path = "train_model/result_images"):
         gpus = torch.cuda.device_count()
         local = 0
         writer = None
@@ -286,13 +292,14 @@ class SoundTrainer:
             self.__train_epoch(epoch, save_model_path, writer)
             if epoch % 3 == 2 and epoch != 0:
                 start_time = time.time()
-                tpr, fpr, threshold, eer = self.__evaluate()
+                frr, far, threshold, eer, resume_model = self.__evaluate(save_image_path)
                 logger.info('\n' + '=' * 70 +
-                            f'测试轮: {epoch + 3}\n'
+                            f'\n测试轮: {epoch + 1}\n'
+                            f'\n最优模型: {resume_model}\n'
                             f'测试时间: {str(timedelta(seconds=(time.time() - start_time)))}\n'
                             f'阈值: {threshold:.2f}\n'
-                            f'真阳性率: {tpr:.5f}\n'
-                            f'假阳性率: {fpr:.5f},\n'
+                            f'错误拒绝率: {frr:.5f}\n'
+                            f'错误接受率: {far:.5f},\n'
                             f'等错误率: {eer:.5f}\n' +
                             '=' * 70)
 
@@ -305,9 +312,9 @@ class SoundTrainer:
 
 
 
-    def __evaluate(self):
+    def __evaluate(self, save_image_path):
         print("开始模型测试")
-        test_tprs, test_fprs, test_thresholds, test_eers = [], [], [], []
+        test_frrs, test_fars, test_thresholds, test_eers = [], [], [], []
         for resume_model in self.save_model_paths:
             resume_model = os.path.join(resume_model, "model.pt").replace('\\', '/')
             assert os.path.exists(resume_model), "模型不存在"
@@ -332,7 +339,7 @@ class SoundTrainer:
                     labels = np.concatenate((labels, label)) if labels is not None else label
 
             self.model.train()
-            metric = TprAtFpr()
+            metric = FRRAndFAR()
             labels = labels.astype(np.int32)
             print('开始两两对比音频特征...')
             for i in tqdm(range(len(features))):
@@ -344,16 +351,34 @@ class SoundTrainer:
                 score = torch.nn.functional.cosine_similarity(feature_1, feature_2, dim=-1).data.cpu().numpy().tolist()
                 y_true = np.array(labels[i] == labels[i:]).astype(np.int32).tolist()
                 metric.add(y_true, score)
-            tprs, fprs, thresholds, eer, index = metric.calculate()
-            tpr, fpr, threshold = tprs[index], fprs[index], thresholds[index]
-            test_tprs.append(tpr)
-            test_fprs.append(fpr)
+            frrs, fars, thresholds, eer, index = metric.calculate()
+            frr, far, threshold = frrs[index], fars[index], thresholds[index]
+            self.__save_result(frrs, fars, thresholds, index, save_image_path, resume_model)
+            test_frrs.append(frr)
+            test_fars.append(far)
             test_thresholds.append(threshold)
             test_eers.append(eer)
         index = test_eers.index(min(test_eers))
         best_model = os.path.join(self.save_model_paths[index], "model.pt").replace('\\', '/')
         optimizer = os.path.join(self.save_model_paths[index], "optimizer.pt").replace('\\', '/')
         model_state_dict = torch.load(best_model)
+        optimizer_state_dict = torch.load(optimizer)
         self.model.load_state_dict(model_state_dict)
-        return test_tprs[index], test_fprs[index], test_thresholds[index], test_eers[index]
+        # self.audio_featurizer.load_state_dict(optimizer_state_dict)
+        return test_frrs[index], test_fars[index], test_thresholds[index], test_eers[index], self.save_model_paths[index]
 
+    def __save_result(self, frrs, fars, thresholds, index, save_image_path, resume_model):
+        resume_model = resume_model.replace('/', '_')
+        resume_model += '.png'
+        import matplotlib.pyplot as plt
+        plt.plot(thresholds, frrs, color='red', linestyle='-', label='frr')
+        plt.plot(thresholds, fars, color='blue', linestyle='-', label='far')
+        plt.plot(thresholds[index], frrs[index], 'ro-')
+        plt.plot(thresholds[index], fars[index], 'bo-')
+        plt.xlabel('thresholds')
+        plt.ylabel('frrs and fars')
+        plt.title('frrs and fars with thresholds change')
+        plt.grid(True)
+        os.makedirs(save_image_path, exist_ok=True)
+        plt.savefig(os.path.join(save_image_path, resume_model).replace('\\', '/'))
+        plt.clf()

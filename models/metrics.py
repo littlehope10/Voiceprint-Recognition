@@ -5,7 +5,7 @@ from utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-class TprAtFpr(object):
+class FRRAndFAR(object):
     def __init__(self, max_fpr=0.01):
         self.pos_score_list = []
         self.neg_score_list = []
@@ -22,34 +22,36 @@ class TprAtFpr(object):
         self.pos_score_list = []
         self.neg_score_list = []
 
-    def calculate_eer(self, tprs, fprs):
-        n = len(tprs)
+    def calculate_eer(self, frrs, fars):
+        n = len(frrs)
         eer = 1.0
+        min = 1.0
         index = 0
         for i in range(n):
-            if fprs[i] + (1 - tprs[i]) < eer:
-                eer = fprs[i] + (1 - tprs[i])
+            if abs(frrs[i] - fars[i]) < min:
+                eer = (frrs[i] + fars[i]) / 2
+                min = abs(frrs[i] - fars[i])
                 index = i
         return eer, index
 
     def calculate(self):
-        tprs, fprs, thresholds = [], [], []
+        frrs, fars, thresholds = [], [], []
         pos_score_list = np.array(self.pos_score_list)
         neg_score_list = np.array(self.neg_score_list)
         if len(pos_score_list) == 0:
             msg = f"The number of positive samples is 0, please add positive samples."
             logger.warning(msg)
-            return tprs, fprs, thresholds, None, None
+            return frrs, fars, thresholds, None, None
         if len(neg_score_list) == 0:
             msg = f"The number of negative samples is 0, please add negative samples."
             logger.warning(msg)
-            return tprs, fprs, thresholds, None, None
+            return frrs, fars, thresholds, None, None
         for i in range(0, 100):
             threshold = i / 100.
-            tpr = np.sum(pos_score_list > threshold) / len(pos_score_list)
-            fpr = np.sum(neg_score_list > threshold) / len(neg_score_list)
-            tprs.append(tpr)
-            fprs.append(fpr)
+            frr = np.sum(pos_score_list < threshold) / len(pos_score_list)
+            far = np.sum(neg_score_list > threshold) / len(neg_score_list)
+            frrs.append(frr)
+            fars.append(far)
             thresholds.append(threshold)
-        eer, index = self.calculate_eer(fprs=fprs, tprs=tprs)
-        return tprs, fprs, thresholds, eer, index
+        eer, index = self.calculate_eer(frrs=frrs, fars=fars)
+        return frrs, fars, thresholds, eer, index

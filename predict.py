@@ -1,3 +1,5 @@
+import math
+
 import torch
 import yaml
 import os
@@ -18,7 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # from torch.nn.functional import cosine_similarity, softmax
 
 class SoundPredict:
-    def __init__(self, configs, threshold, audio_db_path, sound_index_path, model_path, use_gpu):
+    def __init__(self, configs, cos_threshold, euc_threshold, audio_db_path, sound_index_path, model_path, use_gpu):
         self.name_dict = {}
         self.names = []
         self.feature = None
@@ -30,6 +32,8 @@ class SoundPredict:
         self.sound_index_path = sound_index_path
 
         self.cdd_num = 5
+        self.cos_threshold = cos_threshold
+        self.euc_threshold = euc_threshold
 
         # 加载gpu
         if use_gpu:
@@ -109,6 +113,7 @@ class SoundPredict:
         Returns: None
 
         """
+        print("正在加载音频库")
         sounds = []
         for sound_path in tqdm(self.all_sound_path):
             sound_segment = AudioSegment.from_file(sound_path)
@@ -178,7 +183,7 @@ class SoundPredict:
             new_sounds: list: tensor(48000,)
 
         Returns:
-            feature: tuple(2)
+            feature: numpy(2)
 
         """
 
@@ -202,58 +207,82 @@ class SoundPredict:
         features = self.predictor(audio_feature).data.cpu().numpy()
         return features
 
-    def __sk_retrieval(self, np_feature):
-        labels = []
-        similarity = cosine_similarity(np_feature.reshape(1, -1), self.feature.reshape(len(self.feature), -1))
-        for feature in self.feature:
-            similarity = cosine_similarity(np_feature.reshape(-1, 1), feature.reshape(-1, 1))
-            abs_similarity = np.abs(similarity)
-            # 获取候选索引
-            if len(abs_similarity) < self.cdd_num:
-                candidate_idx = np.argpartition(abs_similarity, -len(abs_similarity))[-len(abs_similarity):]
-            else:
-                candidate_idx = np.argpartition(abs_similarity, -self.cdd_num)[-self.cdd_num:]
-            # 过滤低于阈值的索引
-            remove_idx = np.where(abs_similarity[candidate_idx] < self.threshold)
-            candidate_idx = np.delete(candidate_idx, remove_idx)
-            # 获取标签最多的值
-            candidate_label_list = list(np.array(self.names)[candidate_idx])
-            if len(candidate_label_list) == 0:
-                max_label = None
-            else:
-                max_label = max(candidate_label_list, key=candidate_label_list.count)
-            labels.append(max_label)
-        return labels
+    def __cos_retrieval(self, np_feature):
+        """
+        使用余弦相似度进行判断
+        Args:
+            np_feature:
 
-    def __pt_retrieval(self, np_feature):
+        Returns:
+
+        """
+        labels = {}
         results = []
-        np_feature = torch.tensor(np_feature).data.cpu()
-        new_np_feature = np_feature.data.cpu().numpy()
-        for i, feature in enumerate(self.feature):
-            feature = torch.tensor(feature)
-            new_feature = feature.data.cpu().numpy()
-            similarity = cosine_similarity(np_feature, feature, dim = -1)
-            print(feature)
-            # np_feature = np_feature.reshape(1, -1)
-            # feature = feature.reshape(1, -1)
+        for name in self.names:
+            labels[name] = 0
+        similarity = cosine_similarity(np_feature.reshape(1, -1), self.feature.reshape(len(self.feature), -1))
+        for idx in range(len(similarity[0])):
+            if similarity[0][idx] > self.cos_threshold:
+                name = self.name_dict[idx]
+                labels[name] += 1
 
-            # if similarity[0][0] > self.threshold:
-            #     results.append((i, similarity[0][0]))
-
-        return results
-
+        max = 0
+        for name in self.names:
+            if labels[name] > max:
+                results.append(name)
+                max = labels[name]
 
 
-    def recognition(self, audio_data, threshold=None, sample_rate=16000):
+        return results[-1] if len(results) > 0 else None
+
+    def __euc_retrieval(self, np_feature):
+        """
+        使用欧式距离为基准判断
+        Args:
+            np_feature:
+
+        Returns:
+
+        """
+        eucs = []
+        for feature in self.feature:
+            distance = np.linalg.norm(np_feature - feature)
+            eucs.append(distance)
+
+        eucs = np.array(eucs)
+        less_index = np.where(eucs < self.euc_threshold)[0]
+        labels = {}
+        results = []
+        for name in self.names:
+            labels[name] = 0
+        for idx in less_index:
+            labels[self.name_dict[idx]] += 1
+        max = 0
+        for name in self.names:
+            if labels[name] > max:
+                results.append(name)
+                max = labels[name]
+
+        return results[-1] if len(results) > 0 else None
+
+
+
+
+    def recognition(self, audio_data, choice):
         """声纹识别
         :param audio_data: 需要识别的数据，支持文件路径，文件对象，字节，numpy。如果是字节的话，必须是完整的字节文件
         :param threshold: 判断的阈值，如果为None则用创建对象时使用的阈值
         :param sample_rate: 如果传入的事numpy数据，需要指定采样率
         :return: 识别的用户名称，如果为None，即没有识别到用户
         """
-        if threshold:
-            self.threshold = threshold
         feature = self.__predict_one(audio_data)
-        name, acc = self.__sk_retrieval(np_feature=feature)
-        return name, acc
+
+        if choice == 1:
+            name = self.__cos_retrieval(np_feature=feature)
+        elif choice == 2:
+            name = self.__euc_retrieval(np_feature=feature)
+        else:
+            return None
+
+        return name
 
