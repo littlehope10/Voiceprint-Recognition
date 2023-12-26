@@ -47,7 +47,7 @@ class FRRAndFAR(object):
             logger.warning(msg)
             return frrs, fars, thresholds, None, None
         for i in range(0, 100):
-            threshold = i / 100.
+            threshold = i / 100
             frr = np.sum(pos_score_list < threshold) / len(pos_score_list)
             far = np.sum(neg_score_list > threshold) / len(neg_score_list)
             frrs.append(frr)

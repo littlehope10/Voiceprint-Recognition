@@ -20,7 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # from torch.nn.functional import cosine_similarity, softmax
 
 class SoundPredict:
-    def __init__(self, configs, cos_threshold, euc_threshold, audio_db_path, sound_index_path, model_path, use_gpu):
+    def __init__(self, configs, cos_threshold, euc_threshold, audio_db_path, model_path, use_gpu):
         self.name_dict = {}
         self.names = []
         self.feature = None
@@ -28,8 +28,6 @@ class SoundPredict:
         self.have_loaded_sound_path = []
         # 音频库路径
         self.audio_db_path = audio_db_path
-        # index.bin索引路径
-        self.sound_index_path = sound_index_path
 
         self.cdd_num = 5
         self.cos_threshold = cos_threshold
@@ -220,20 +218,16 @@ class SoundPredict:
         results = []
         for name in self.names:
             labels[name] = 0
-        similarity = cosine_similarity(np_feature.reshape(1, -1), self.feature.reshape(len(self.feature), -1))
-        for idx in range(len(similarity[0])):
-            if similarity[0][idx] > self.cos_threshold:
-                name = self.name_dict[idx]
-                labels[name] += 1
-
-        max = 0
-        for name in self.names:
-            if labels[name] > max:
-                results.append(name)
-                max = labels[name]
+        similarity = cosine_similarity(np_feature.reshape(1, -1), self.feature.reshape(len(self.feature), -1)).ravel().tolist()
+        max = -1
+        index = -1
+        for i in range(len(similarity)):
+            if similarity[i] > self.cos_threshold and similarity[i] > max:
+                max = similarity[i]
+                index = i
 
 
-        return results[-1] if len(results) > 0 else None
+        return self.name_dict[index] if index >= 0 else None
 
     def __euc_retrieval(self, np_feature):
         """

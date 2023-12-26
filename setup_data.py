@@ -30,9 +30,12 @@ def rename():
     else_path = []
     for name in names:
         try:
-            to_num = int(name)
-            if to_num >= 0:
-                num_path.append(to_num)
+            if name.find('_') < 0:
+                to_num = int(name)
+                if to_num >= 0:
+                    num_path.append(to_num)
+                else:
+                    else_path.append(name)
             else:
                 else_path.append(name)
         except ValueError:
@@ -44,6 +47,7 @@ def rename():
         if num != i:
             old_path = os.path.join(path, str(num)).replace('\\', '/')
             new_path = os.path.join(path, str(i)).replace('\\', '/')
+            os.system(f"attrib -r {old_path}")
             os.rename(old_path, new_path)
         if json_data is not None and num in json_data.keys():
             new_data[i] = str(json_data[num])

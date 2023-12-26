@@ -2,3 +2,6 @@
 _pycache_/
 .idea/
 log/
+voice/
+sound_database/
+test/

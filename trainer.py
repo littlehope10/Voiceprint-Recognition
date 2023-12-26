@@ -16,12 +16,14 @@ from models.tdnn import TDNN
 from utils.utils import print_arguments, add_arguments, dict_to_object
 from data_utils.reader import AudioReader
 from torch.utils.data import DataLoader
-from visualdl import LogWriter
 from utils.logger import setup_logger
 from data_utils.featurizer import AudioFeaturizer
 from models.res2net import Res2Net
 from datetime import timedelta
 from models.metrics import FRRAndFAR
+
+import warnings
+warnings.filterwarnings("ignore")
 
 
 logger = setup_logger(__name__)
@@ -191,7 +193,7 @@ class SoundTrainer:
         if best_model:
             model_path = self.best_model_path
         else:
-            model_path = os.path.join(self.model_path, f'epoch_{epoch_id}_batch_{batch_id}').replace('\\', '/')
+            model_path = os.path.join(self.model_path, f'epoch_{epoch_id + 1}_batch_{batch_id}').replace('\\', '/')
             if model_path not in self.save_model_paths:
                 self.save_model_paths.append(model_path)
 
@@ -211,7 +213,7 @@ class SoundTrainer:
             每一次训练长度为batch的音频数据
             记录训练时间，准确率及损失
     """
-    def __train_epoch(self, epoch_id, save_path, writer):
+    def __train_epoch(self, epoch_id, save_path):
         train_times, accs, loss = [], [], []
         start = time.time()
         sum_batch = len(self.train_loader) * self.config.train_conf.max_epoch
@@ -269,7 +271,7 @@ class SoundTrainer:
                 train_times = []
 
             # 固定步数也要保存一次模型
-            if batch_id % 30 == 0 and batch_id != 0:
+            if batch_id % 300 == 0 and batch_id != 0:
                 self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
             start = time.time()
         self.scheduler.step()
@@ -279,9 +281,6 @@ class SoundTrainer:
     def train(self, save_model_path = "train_model/", save_image_path = "train_model/result_images"):
         gpus = torch.cuda.device_count()
         local = 0
-        writer = None
-        if local == 0:
-            writer = LogWriter(logdir="log")
         self.__dataload(True)
         self.__modelload(input_size=self.audio_featurizer.feature_dim, is_train=True)
         logger.info(f"共有{len(self.train_data)}个训练集数据")
@@ -289,7 +288,7 @@ class SoundTrainer:
         best_eer = 1
 
         for epoch in range(0, self.config.train_conf.max_epoch):
-            self.__train_epoch(epoch, save_model_path, writer)
+            self.__train_epoch(epoch, save_model_path)
             if epoch % 3 == 2 and epoch != 0:
                 start_time = time.time()
                 frr, far, threshold, eer, resume_model = self.__evaluate(save_image_path)
@@ -364,7 +363,7 @@ class SoundTrainer:
         model_state_dict = torch.load(best_model)
         optimizer_state_dict = torch.load(optimizer)
         self.model.load_state_dict(model_state_dict)
-        # self.audio_featurizer.load_state_dict(optimizer_state_dict)
+        self.optimizer.load_state_dict(optimizer_state_dict)
         return test_frrs[index], test_fars[index], test_thresholds[index], test_eers[index], self.save_model_paths[index]
 
     def __save_result(self, frrs, fars, thresholds, index, save_image_path, resume_model):
