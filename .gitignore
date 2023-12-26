@@ -3,5 +3,7 @@ _pycache_/
 .idea/
 log/
 /dataset/voice/*
+!/dataset/voice/
 /sound_database/*
+!/sound_database/
 /test/*
