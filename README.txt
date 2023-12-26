@@ -17,3 +17,6 @@ train.py 训练模型的入口
 trainer.py 训练模型的主体
 
 3个bat程序为启动项，在启动前应打开bat程序修改pytorch的启动环境
+
+在启动程序前请先配置configs/congiguration.yml文件，否则会出错
+bug反馈:2280829645@qq.com
