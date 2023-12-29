@@ -7,3 +7,5 @@ log/
 /sound_database/*
 !/sound_database/
 /test/*
+*.png
+.git/
