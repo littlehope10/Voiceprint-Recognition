@@ -3,7 +3,7 @@ dataset_conf:
   # 训练的批量大小
   batch_size: 64
   # 说话人数量，即分类大小
-  num_speakers: 100 # 85
+  num_speakers: 85 # 85
   # 读取数据的线程数量
   num_workers: 4
   # 过滤最短的音频长度
@@ -50,7 +50,7 @@ model_conf:
 train_conf:
   # 训练的轮数
   max_epoch: 30
-  log_interval: 300
+  log_interval: 30
 
 # 所使用的模型，支持EcapaTdnn、TDNN、Res2Net、ResNetSE
 use_model: 'EcapaTdnn'

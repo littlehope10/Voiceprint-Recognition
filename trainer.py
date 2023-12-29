@@ -271,7 +271,7 @@ class SoundTrainer:
                 train_times = []
 
             # 固定步数也要保存一次模型
-            if batch_id % 300 == 0 and batch_id != 0:
+            if batch_id % 30 == 0 and batch_id != 0:
                 self.__save_model(save_model_path=save_path,batch_id=batch_id, epoch_id=epoch_id)
             start = time.time()
         self.scheduler.step()
