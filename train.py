@@ -5,6 +5,7 @@ from utils.logger import setup_logger
 from trainer import SoundTrainer
 from utils.utils import print_arguments, add_arguments
 
+# 剩下的文件太大，推送不上去
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

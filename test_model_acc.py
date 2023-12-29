@@ -5,6 +5,8 @@ import os
 import predict
 from utils.utils import add_arguments, print_arguments
 
+# 剩下的文件太大，推送不上去
+
 parser = argparse.ArgumentParser(description=__doc__)
 add_arg = functools.partial(add_arguments, argparser=parser)
 add_arg('configs',          str,    'configs/configuration.yml',   '配置文件')

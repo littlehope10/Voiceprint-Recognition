@@ -6,6 +6,8 @@ import os
 import platform
 import shutil
 
+# 剩下的文件太大，推送不上去
+
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 from models.ecapa_tdnn import EcapaTdnn
